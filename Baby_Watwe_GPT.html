@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>WaterHero — 每日喝水紀錄</title>
+
+<!-- Tailwind Play CDN (方便開發) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- lottie-web -->
+<script src="https://cdn.jsdelivr.net/npm/lottie-web@5.10.1/build/player/lottie.min.js"></script>
+
+<style>
+  /* 小幅自訂 */
+  .glass {
+    backdrop-filter: blur(6px);
+    background: rgba(255,255,255,0.6);
+  }
+  .dark .glass { background: rgba(17,24,39,0.55); }
+  .badge-anim { width: 92px; height: 92px; }
+  /* 進度條漣漪效果 */
+  .progress-wave { background: linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0)); }
+</style>
+</head>
+<body class="bg-gradient-to-b from-sky-50 to-white dark:from-slate-900 dark:to-slate-800 text-slate-800 dark:text-slate-100 min-h-screen">
+
+<div class="max-w-3xl mx-auto p-6">
+  <header class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold">WaterHero 💧</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-300">務實、可執行的喝水習慣管理（含徽章、提醒與歷史）</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <button id="themeToggle" class="px-3 py-2 rounded-lg glass">主題</button>
+      <button id="notifyBtn" class="px-3 py-2 rounded-lg glass">提醒</button>
+    </div>
+  </header>
+
+  <!-- 主要卡片 -->
+  <main class="grid gap-4">
+    <!-- 目標卡 -->
+    <section class="p-4 rounded-2xl glass shadow">
+      <div class="flex justify-between items-center mb-3">
+        <div>
+          <div class="text-sm text-slate-500 dark:text-slate-300">今日目標</div>
+          <div class="text-xl font-bold"><span id="goalDisplay">2000</span> <span id="unitLabel">ml</span></div>
+        </div>
+        <div class="text-right">
+          <div class="text-sm text-slate-500 dark:text-slate-300">已喝</div>
+          <div class="text-xl font-bold"><span id="todayTotal">0</span> <span id="unitLabel2">ml</span></div>
+        </div>
+      </div>
+
+      <!-- 進度條 -->
+      <div class="w-full h-4 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden mb-3">
+        <div id="progressBar" class="h-full bg-sky-400 dark:bg-sky-500 text-right progress-wave" style="width:0%"></div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <input id="addInput" type="number" min="1" placeholder="輸入喝水量 (例如 250)" class="flex-1 p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <select id="unitSelect" class="p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+          <option value="ml">ml</option>
+          <option value="cup">杯 (250ml)</option>
+        </select>
+        <button id="addBtn" class="px-4 py-3 rounded-lg bg-sky-600 text-white">加入</button>
+      </div>
+    </section>
+
+    <!-- 控制與設定 -->
+    <section class="p-4 rounded-2xl glass shadow grid gap-3">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="text-sm text-slate-500 dark:text-slate-300">每日目標 (ml)</div>
+          <input id="goalInput" type="number" min="100" class="p-2 mt-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" value="2000">
+        </div>
+        <div class="text-right">
+          <div class="text-sm text-slate-500 dark:text-slate-300">提醒間隔</div>
+          <div class="flex gap-2 mt-1">
+            <input id="reminderMinutes" type="number" min="10" value="120" class="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 w-24"> <div class="self-center text-sm">分鐘</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex gap-2">
+        <button id="saveSettings" class="px-4 py-2 rounded-lg bg-green-600 text-white">儲存設定</button>
+        <button id="resetToday" class="px-4 py-2 rounded-lg bg-amber-500 text-white">重設今日</button>
+        <button id="exportBtn" class="px-4 py-2 rounded-lg bg-slate-600 text-white">匯出資料</button>
+      </div>
+      <div class="text-sm text-slate-500 dark:text-slate-300">說明：提醒需允許瀏覽器通知；資料存於本機，不會上傳。</div>
+    </section>
+
+    <!-- 七日圖表 + 歷史 -->
+    <section class="p-4 rounded-2xl glass shadow">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="font-semibold">過去 7 天紀錄</h3>
+        <div class="text-sm text-slate-500 dark:text-slate-300">查看趨勢以作為行為調整依據</div>
+      </div>
+      <canvas id="weekChart" height="140"></canvas>
+      <div id="historyList" class="mt-3 text-sm text-slate-700 dark:text-slate-300"></div>
+    </section>
+
+    <!-- 遊戲化 / 徽章 -->
+    <section class="p-4 rounded-2xl glass shadow grid gap-3">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="text-sm text-slate-500 dark:text-slate-300">水瓶名稱</div>
+          <input id="bottleName" class="p-2 mt-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" placeholder="為你的水瓶命名">
+        </div>
+        <div class="text-right">
+          <div class="text-sm text-slate-500 dark:text-slate-300">等級</div>
+          <div class="text-lg font-bold" id="bottleLevel">Lv.1</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-6">
+        <!-- Lottie 動畫容器 -->
+        <div id="badgeContainer" class="badge-anim"></div>
+        <div>
+          <div class="text-sm text-slate-500 dark:text-slate-300">連續達標 (streak)</div>
+          <div class="text-2xl font-bold" id="streakCount">0</div>
+          <div class="text-sm text-slate-500 dark:text-slate-300 mt-1" id="streakHint">連續達成每日目標可提升等級並解鎖徽章</div>
+        </div>
+      </div>
+
+      <div class="flex gap-2">
+        <button id="claimBadge" class="px-4 py-2 rounded-lg bg-indigo-600 text-white">領取徽章（達成時可點）</button>
+        <button id="resetAll" class="px-4 py-2 rounded-lg bg-red-600 text-white">重設所有資料</button>
+      </div>
+    </section>
+
+    <footer class="text-xs text-slate-500 dark:text-slate-400 mt-4">
+      說明：本系統以「最低阻力紀錄」為原則；提醒在分頁開啟狀態下有效；若需離線背景推播，建議升級為 PWA 或串接伺服器 Push。
+    </footer>
+  </main>
+</div>
+
+<script>
+/*
+  WaterHero — Single File App
+  功能：
+    - 每日喝水量紀錄（localStorage）
+    - 每日目標設定 / 單位切換 (ml / 杯)
+    - 七日圖表、歷史清單
+    - 提醒（Notification API，本分頁開啟時有效）
+    - 遊戲化：streak、徽章、命名、等級
+    - 暗/亮主題切換
+
+  資料結構（存於 localStorage, key = "waterhero_v1"）:
+  {
+    settings: { goal: 2000, unit: 'ml', reminderMinutes: 120, theme: 'light' },
+    data: { '2025-10-17': 1250, '2025-10-16': 2000, ... },
+    meta: { bottleName: '...', streak: 3, lastAchieved: '2025-10-16' }
+  }
+*/
+
+// ----------------- utility -----------------
+const LS_KEY = 'waterhero_v1';
+const MILLI_PER_DAY = 24*3600*1000;
+
+function isoDate(d = new Date()){
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().split('T')[0];
+}
+function loadState(){
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return defaultState();
+    const s = JSON.parse(raw);
+    return {...defaultState(), ...s}; // merge for forward compat
+  } catch(e) { console.error(e); return defaultState(); }
+}
+function saveState(){
+  localStorage.setItem(LS_KEY, JSON.stringify(state));
+}
+function defaultState(){
+  return {
+    settings: { goal: 2000, unit: 'ml', reminderMinutes: 120, theme: 'light' },
+    data: {},
+    meta: { bottleName: '', streak: 0, lastAchieved: null, badges: [] }
+  };
+}
+
+// ----------------- app state -----------------
+let state = loadState();
+
+// ----------------- DOM refs -----------------
+const todayKey = () => isoDate();
+const goalDisplay = document.getElementById('goalDisplay');
+const todayTotalEl = document.getElementById('todayTotal');
+const progressBar = document.getElementById('progressBar');
+const addInput = document.getElementById('addInput');
+const addBtn = document.getElementById('addBtn');
+const unitSelect = document.getElementById('unitSelect');
+const unitLabel = document.getElementById('unitLabel');
+const unitLabel2 = document.getElementById('unitLabel2');
+const goalInput = document.getElementById('goalInput');
+const saveSettings = document.getElementById('saveSettings');
+const resetTodayBtn = document.getElementById('resetToday');
+const weekChartCtx = document.getElementById('weekChart');
+const historyList = document.getElementById('historyList');
+const reminderMinutesInput = document.getElementById('reminderMinutes');
+const notifyBtn = document.getElementById('notifyBtn');
+const exportBtn = document.getElementById('exportBtn');
+const themeToggle = document.getElementById('themeToggle');
+
+const bottleNameInput = document.getElementById('bottleName');
+const bottleLevelEl = document.getElementById('bottleLevel');
+const streakCountEl = document.getElementById('streakCount');
+const badgeContainer = document.getElementById('badgeContainer');
+const claimBadgeBtn = document.getElementById('claimBadge');
+const resetAllBtn = document.getElementById('resetAll');
+
+// ----------------- initialization -----------------
+function init(){
+  // apply settings UI
+  goalInput.value = state.settings.goal;
+  unitSelect.value = state.settings.unit;
+  reminderMinutesInput.value = state.settings.reminderMinutes;
+  bottleNameInput.value = state.meta.bottleName || '';
+  applyTheme(state.settings.theme);
+
+  // render today
+  if (!state.data[todayKey()]) state.data[todayKey()] = 0;
+  render();
+
+  // events
+  addBtn.addEventListener('click', onAdd);
+  addInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') onAdd(); });
+  saveSettings.addEventListener('click', onSaveSettings);
+  resetTodayBtn.addEventListener('click', onResetToday);
+  unitSelect.addEventListener('change', onUnitChange);
+  notifyBtn.addEventListener('click', onRequestNotify);
+  exportBtn.addEventListener('click', onExport);
+  themeToggle.addEventListener('click', onToggleTheme);
+  bottleNameInput.addEventListener('change', onBottleNameChange);
+  claimBadgeBtn.addEventListener('click', onClaimBadge);
+  resetAllBtn.addEventListener('click', onResetAll);
+
+  startReminderTimerIfNeeded();
+  initBadgeAnimation();
+  initChart();
+  updateChart();
+}
+
+function applyTheme(t){
+  if (t === 'dark') document.documentElement.classList.add('dark');
+  else document.documentElement.classList.remove('dark');
+  state.settings.theme = t;
+  saveState();
+}
+
+// ----------------- core functions -----------------
+function getTodayTotal(){
+  return state.data[todayKey()] || 0;
+}
+function setTodayTotal(v){
+  state.data[todayKey()] = Math.max(0, Math.round(v));
+  saveState();
+}
+function onAdd(){
+  const raw = parseFloat(addInput.value);
+  if (!raw || raw <= 0) { alert('請輸入大於 0 的數字'); return; }
+  let addMl = raw;
+  if (unitSelect.value === 'cup') addMl = raw * 250;
+  const prev = getTodayTotal();
+  setTodayTotal(prev + addMl);
+  addInput.value = '';
+  render();
+  // 若剛好達成目標，觸發成就流程
+  if (prev < state.settings.goal && getTodayTotal() >= state.settings.goal){
+    onAchieveToday();
+  }
+}
+
+function onSaveSettings(){
+  const g = parseInt(goalInput.value) || 2000;
+  const rm = parseInt(reminderMinutesInput.value) || 120;
+  state.settings.goal = Math.max(100, g);
+  state.settings.reminderMinutes = Math.max(10, rm);
+  state.settings.unit = unitSelect.value;
+  saveState();
+  render();
+  startReminderTimerIfNeeded(true);
+  alert('設定已儲存');
+}
+
+function onResetToday(){
+  if (!confirm('確認要重設今日喝水紀錄？此動作不可還原。')) return;
+  state.data[todayKey()] = 0;
+  saveState();
+  render();
+}
+
+function onResetAll(){
+  if (!confirm('重設所有資料（含 streak、徽章、歷史）？確定請輸入 yes')) return;
+  const token = prompt('輸入 "yes" 以確認重設');
+  if (token !== 'yes') return;
+  state = defaultState();
+  saveState();
+  location.reload();
+}
+
+function onUnitChange(){
+  // 翻譯 UI 標籤
+  if (unitSelect.value === 'cup') { unitLabel.textContent = '杯'; unitLabel2.textContent = '杯'; }
+  else { unitLabel.textContent = 'ml'; unitLabel2.textContent = 'ml'; }
+  state.settings.unit = unitSelect.value;
+  saveState();
+  render();
+}
+
+// ----------------- achievement / streak -----------------
+function onAchieveToday(){
+  // 更新 streak：如果昨天也達標，streak+1；否則重置為1
+  const yesterday = isoDate(new Date(Date.now() - MILLI_PER_DAY));
+  const yesterdayReached = (state.data[yesterday] || 0) >= state.settings.goal;
+  if (yesterdayReached && state.meta.lastAchieved === yesterday) {
+    // already counted yesterday; continue
+    state.meta.streak = (state.meta.streak || 0) + 1;
+  } else {
+    // if lastAchieved is yesterday, then we are continuing; else check logically
+    if (yesterdayReached) state.meta.streak = (state.meta.streak || 0) + 1;
+    else state.meta.streak = 1;
+  }
+  state.meta.lastAchieved = todayKey();
+  // 依 streak 決定等級與徽章
+  updateBottleLevel();
+  saveState();
+  // 彈通知與徽章動畫
+  showNotification('今日目標達成 🎉', `已達成今日目標 ${state.settings.goal} ml`);
+  playBadgeUnlock();
+}
+
+function updateBottleLevel(){
+  const s = state.meta.streak || 0;
+  let lvl = 1;
+  if (s >= 30) lvl = 5;
+  else if (s >= 14) lvl = 4;
+  else if (s >= 7) lvl = 3;
+  else if (s >= 3) lvl = 2;
+  state.meta.level = lvl;
+  // 自動領徽章紀錄（簡單紀錄）
+  const badge = `Lv${lvl}-streak-${s}`;
+  if (!state.meta.badges.includes(badge)) state.meta.badges.push(badge);
+  saveState();
+}
+
+function onClaimBadge(){
+  // 只有當今日已達標才允許點擊
+  if ((state.data[todayKey()] || 0) < state.settings.goal) {
+    alert('尚未達成今日目標，無法領取徽章');
+    return;
+  }
+  // 給予一個簡單徽章訊息
+  const badge = `achieve-${todayKey()}`;
+  if (!state.meta.badges.includes(badge)) {
+    state.meta.badges.push(badge);
+    saveState();
+    alert('徽章已領取！已加入個人徽章牆。');
+  } else {
+    alert('本日徽章已領取。');
+  }
+  render();
+}
+
+// ----------------- notifications / reminders -----------------
+let reminderTimer = null;
+function startReminderTimerIfNeeded(force=false){
+  if (reminderTimer && !force) return;
+  if (reminderTimer) { clearInterval(reminderTimer); reminderTimer = null; }
+  const mins = parseInt(state.settings.reminderMinutes) || 120;
+  // we will schedule periodic reminders while the page is open
+  reminderTimer = setInterval(()=> {
+    // only notify if not yet reached today goal
+    if ((state.data[todayKey()] || 0) < state.settings.goal) {
+      showNotification('喝水提醒', `尚未達成今日目標 ${state.settings.goal} ml，來一杯水吧`);
+    }
+  }, mins*60*1000);
+}
+
+async function onRequestNotify(){
+  if (!('Notification' in window)) { alert('此瀏覽器不支援 Web Notifications'); return; }
+  const perm = await Notification.requestPermission();
+  if (perm === 'granted') {
+    alert('已取得通知權限（提醒將在本分頁開啟時生效；如需背景提醒請考慮 PWA/Server Push）');
+    showNotification('提醒已啟用', 'WaterHero 已啟用喝水提醒（只在分頁開啟時有效）');
+  } else {
+    alert('未取得通知權限，無法啟用提醒');
+  }
+}
+
+function showNotification(title, body){
+  if (!('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  try {
+    const n = new Notification(title, { body, icon: null });
+    n.onclick = () => window.focus();
+  } catch(e) { console.warn('通知失敗', e); }
+}
+
+// ----------------- chart / history -----------------
+let weekChart = null;
+function initChart(){
+  const cfg = {
+    type: 'bar',
+    data: { labels: [], datasets: [{ label: '每日總量 (ml)', data: [], borderRadius: 8, barThickness: 18 }]},
+    options: {
+      responsive: true,
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true }
+      },
+      plugins: { legend: { display: false } }
+    }
+  };
+  weekChart = new Chart(weekChartCtx, cfg);
+}
+
+function updateChart(){
+  // last 7 days
+  const labels = [];
+  const dataPoints = [];
+  for (let i=6; i>=0; i--){
+    const d = new Date(Date.now() - i*MILLI_PER_DAY);
+    const key = isoDate(d);
+    labels.push(key.slice(5)); // MM-DD
+    dataPoints.push(state.data[key] || 0);
+  }
+  weekChart.data.labels = labels;
+  weekChart.data.datasets[0].data = dataPoints;
+  weekChart.update();
+  renderHistoryList();
+}
+
+// history list (plain)
+function renderHistoryList(){
+  let html = '';
+  const keys = Object.keys(state.data).sort().slice(-14).reverse();
+  if (keys.length === 0) html = '<div class="text-sm text-slate-500">尚無紀錄</div>';
+  else {
+    keys.forEach(k => {
+      const v = state.data[k] || 0;
+      html += `<div class="flex justify-between py-1 border-b border-slate-100 dark:border-slate-700"><div>${k}</div><div>${v} ml</div></div>`;
+    });
+  }
+  historyList.innerHTML = html;
+}
+
+// ----------------- render UI -----------------
+function render(){
+  // ensure today key exists
+  if (!state.data[todayKey()]) state.data[todayKey()] = 0;
+  // goal & totals
+  goalDisplay.textContent = state.settings.goal;
+  todayTotalEl.textContent = Math.round(getTodayTotal());
+  const pct = Math.min(100, Math.round(getTodayTotal() / state.settings.goal * 100));
+  progressBar.style.width = pct + '%';
+  // chart
+  updateChart();
+  // bottle / streak
+  bottleLevelEl.textContent = `Lv.${(state.meta.level || 1)}`;
+  streakCountEl.textContent = state.meta.streak || 0;
+  // bottle name persist
+  bottleNameInput.value = state.meta.bottleName || '';
+  saveState();
+}
+
+// ----------------- export / import -----------------
+function onExport(){
+  const dataStr = JSON.stringify(state, null, 2);
+  const blob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `waterhero_export_${isoDate()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ----------------- badge animation (lottie) -----------------
+let lottiePlayer = null;
+function initBadgeAnimation(){
+  // lottie animation placeholder (simple water drop animation JSON hosted via CDN could be used)
+  // We'll use a minimal inline animation JSON if remote fails.
+  const sampleAnim = {
+    "v":"5.5.7","fr":30,"ip":0,"op":60,"w":200,"h":200,"nm":"drop","ddd":0,"assets":[],"layers":[
+      {"ddd":0,"ind":1,"ty":4,"nm":"drop","sr":1,"ks":{"o":{"k":100},"r":{"k":0},"p":{"k":[100,100,0]},"a":{"k":[0,0,0]},"s":{"k":[100,100,100]}},"shapes":[
+        {"ty":"gr","it":[{"ind":0,"ty":"sh","ks":{"k":{"i":[[0,0]],"o":[[0,0]],"v":[[0,-40],[24,-10],[12,30],[-12,30],[-24,-10]],"c":true}},"nm":"path"},{"ty":"fl","c":{"k":[0.13,0.63,0.95,1]},"o":{"k":100}}],"nm":"dropShape"}]
+    }]
+  };
+  try {
+    lottiePlayer = lottie.loadAnimation({
+      container: badgeContainer,
+      renderer: 'svg',
+      loop: false,
+      autoplay: false,
+      animationData: sampleAnim
+    });
+  } catch(e){
+    console.warn('lottie init fail', e);
+  }
+}
+
+function playBadgeUnlock(){
+  if (lottiePlayer) {
+    try { lottiePlayer.goToAndPlay(0,true); } catch(e){ console.warn(e); }
+  }
+}
+
+// ----------------- theme toggle -----------------
+function onToggleTheme(){
+  const next = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
+  applyTheme(next);
+}
+
+// ----------------- bottle name change -----------------
+function onBottleNameChange(){
+  state.meta.bottleName = bottleNameInput.value.trim();
+  saveState();
+  alert('水瓶名稱已儲存');
+}
+
+// ----------------- periodic UI updater -----------------
+setInterval(()=> {
+  // auto save and update chart every minute
+  updateChart();
+}, 60*1000);
+
+// ----------------- init + first render -----------------
+init();
+render();
+
+</script>
+</body>
+</html>
